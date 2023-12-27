@@ -4,8 +4,8 @@ import time
 from tkinter import messagebox
 from pymem import *
 
-dwEntityList = (0x4D4F25C)
-m_iTeamNum = (0xF4) 
+dwEntityList = (0x17BB820)
+m_iTeamNum = (0x3bf) 
 m_clrRender = (0x70)
 
 rgbT = [255,51,0]
@@ -26,7 +26,6 @@ def show_message_error(msg):
     
 def stop_wall():
     messagebox.showinfo("Message","Desactive wall hack")
-    exit(0)
     
 btn = tk.Button(app,text="Active wall hack",command=show_message)
 btn.place(x=10,y=10,width=150,height=20)
@@ -37,24 +36,21 @@ def activate_wall():
         pm = pymem.Pymem('cs2.exe')
         client = pymem.process.module_from_name(pm.process_handle,"client.dll").lpBaseOfDll
         
-        while True: 
-            if keyboard.press('shift+f10'):
-                stop_wall(0)
-            time.sleep(0.001)
+        while True:
+            if keyboard.read_key() == 'esc':
+                print('desactive wall hack')
+                stop_wall()
+                break
+            time.sleep(0.01)
+            
             for i in range(32):
-                entity = pm.read_int(client + dwEntityList * i * 0x10)
-                if entity:
-                    entity_team_id = pm.read_int(entity + m_iTeamNum)
+                list_entry = pm.read_int(client + dwEntityList + (i * 0x10))
+             
+                
+                if list_entry:
+                    entity_team_id = pm.read_int(list_entry+ m_iTeamNum)
+                    print(entity_team_id)
                     
-                    if entity_team_id == 2: 
-                        pm.write_int(entity + m_clrRender, (rgbT[0]))
-                        pm.write_int(entity + m_clrRender + 0x1, (rgbT[1]))
-                        pm.write_int(entity + m_clrRender + 0x2, (rgbT[2]))
-                    elif entity_team_id == 3:
-                        pm.write_int(entity + m_clrRender, (rgbCT[0]))
-                        pm.write_int(entity + m_clrRender + 0x1, (rgbCT[1]))
-                        pm.write_int(entity + m_clrRender + 0x2, (rgbCT[2]))    
-        
     except Exception as e: 
         show_message_error(e)
     
