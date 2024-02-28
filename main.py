@@ -7,12 +7,13 @@ import wave
 from tkinter import messagebox
 from pymem import *
 import pyaudio
-import websocket
 from websocket._abnf import ABNF
 import threading
 import configparser
 import base64
 import datetime
+from ibm_watson import SpeechToTextV1
+from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 
 flag = False
 
