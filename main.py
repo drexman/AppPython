@@ -15,25 +15,13 @@ import datetime
 from ibm_watson import SpeechToTextV1
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 
+
 flag = False
-
-class WorkerThread(threading.Thread):
-    def __init__(self):
-        super().__init__()
-        self._stop_event = threading.Event()
-
-    def run(self):
-        while not self._stop_event.is_set():
-            print("Thread is running...")
-            time.sleep(1)
-
-    def stop(self):
-        self._stop_event.set()
 
 class settings:
     FORMAT = pyaudio.paInt16
     CHANNELS = 2
-    RATE = 44100
+    RATE = 16000
     CHUNCK = 1024
     DURATION = 10
 
@@ -63,11 +51,11 @@ def on_error(self, error):
 def on_close(ws):
     print('encerrando serviço ws')
 
-def get_auth():
+def get_apikey():
     config = configparser.RawConfigParser()
     config.read('config.cfg')
     apikey = config.get('auth', 'apikey')
-    return ("apikey", apikey)
+    return apikey
 
 def get_url():
     config = configparser.RawConfigParser()
@@ -79,6 +67,16 @@ def get_url():
 
 
 def activate_listening_mode():
+    print(get_apikey())
+    authenticator = IAMAuthenticator('mwifKfeLVtW6wWQvx2WcWLMR22WzsfHQy_kx20CayPzf')
+    service = SpeechToTextV1(authenticator=authenticator)
+    service.set_service_url('https://api.au-syd.speech-to-text.watson.cloud.ibm.com/instances/890d865a-8921-4e6d-8b01-dc4acf9eee55')
+    models = service.list_models().get_result()
+    
+    print(json.dumps(models, indent=2))
+
+    model = service.get_model('en-US_BroadbandModel').get_result()
+    print(json.dumps(model, indent=2))
     audio = pyaudio.PyAudio()
     stream = audio.open(rate=settings.RATE, channels=settings.CHANNELS, format=settings.FORMAT, input=True,
                         frames_per_buffer=settings.CHUNCK)
@@ -110,6 +108,19 @@ def activate_listening_mode():
     wf.writeframes(b''.join(frames))
     wf.close()
     print('Audio foi gravado com sucesso')
+    
+    with open("output{}.wav".format(today_format), mode="rb") as wav: 
+        result = service.recognize(
+            audio=wav, 
+            content_type='audio/wav',
+            timestamps=True,
+            word_confidence=True
+        ).get_result()
+        if 'results' in result and len(result['results']) > 0:
+            transcript = result['results'][0]['alternatives'][0]['transcript']
+            print("Transcription:", transcript)
+        else:
+            print("No transcription available.")
 
 def open_listening_mode():
     global listening_button
@@ -142,30 +153,8 @@ def main():
     global listening_button
     global stop_button
     global app
+    global service
     app = tk.Tk()
-
-    headers = {}
-    userpass = ":".join(get_auth())
-    headers["Authorization"] = "Basic " + base64.b64encode(
-        userpass.encode()).decode()
-    url = get_url()
-
-    #ws = websocket.WebSocket(url, header=headers, on_message=on_message, on_error=on_error, on_close=on_close)
-    data = {
-        "action": "start",
-        # this means we get to send it straight raw sampling
-        "content-type": "audio/l16;rate=%d" % settings.RATE,
-        "continuous": True,
-        "interim_results": True,
-        # "inactivity_timeout": 5, # in order to use this effectively
-        # you need other tests to handle what happens if the socket is
-        # closed by the server.
-        "word_confidence": True,
-        "timestamps": True,
-        "max_alternatives": 3
-    }
-    #print(json.dumps(data).encode('utf8'))
-    #ws.send(json.dumps(data).encode('utf8'))
 
     app.title("Traslate App")
     app.geometry("600x400")
