@@ -4,7 +4,7 @@ import time
 import base64
 import json
 import wave
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from pymem import *
 import pyaudio
 from websocket._abnf import ABNF
@@ -21,7 +21,7 @@ flag = False
 class settings:
     FORMAT = pyaudio.paInt16
     CHANNELS = 2
-    RATE = 16000
+    RATE =  44100
     CHUNCK = 1024
     DURATION = 10
 
@@ -57,17 +57,23 @@ def get_apikey():
     apikey = config.get('auth', 'apikey')
     return apikey
 
-def get_url():
-    config = configparser.RawConfigParser()
-    config.read('config.cfg')
-    region = config.get('auth','region')
-    host = REGION_MAP['us-east']
-    return ("wss://{}/speech-to-text/api/v1/recognize"
-           "?model=en-AU_BroadbandModel").format(host)
 
+def list_audio_devices():
+    p = pyaudio.PyAudio()
+    info = p.get_host_api_info_by_index(0)
+    num_devices = info.get('deviceCount')
+
+    devices = []
+    for i in range(num_devices):
+        device_info = p.get_device_info_by_host_api_device_index(0, i)
+        device_name = device_info.get('name')
+        print(device_info)
+        devices.append(device_name)
+
+    p.terminate()
+    return devices
 
 def activate_listening_mode():
-    print(get_apikey())
     authenticator = IAMAuthenticator('mwifKfeLVtW6wWQvx2WcWLMR22WzsfHQy_kx20CayPzf')
     service = SpeechToTextV1(authenticator=authenticator)
     service.set_service_url('https://api.au-syd.speech-to-text.watson.cloud.ibm.com/instances/890d865a-8921-4e6d-8b01-dc4acf9eee55')
@@ -78,8 +84,7 @@ def activate_listening_mode():
     model = service.get_model('en-US_BroadbandModel').get_result()
     print(json.dumps(model, indent=2))
     audio = pyaudio.PyAudio()
-    stream = audio.open(rate=settings.RATE, channels=settings.CHANNELS, format=settings.FORMAT, input=True,
-                        frames_per_buffer=settings.CHUNCK)
+    stream = audio.open(rate=settings.RATE, channels=settings.CHANNELS, format=settings.FORMAT, input=True,frames_per_buffer=settings.CHUNCK)
     stream.start_stream()
     print('Escutando....')
     frames = []
@@ -122,6 +127,8 @@ def activate_listening_mode():
         else:
             print("No transcription available.")
 
+
+
 def open_listening_mode():
     global listening_button
     global stop_button
@@ -144,54 +151,56 @@ def stop_listening_mode():
 def on_closing():
     global t
     global app
-    if t.is_alive():
-        stop_listening_mode()
-    app.destroy()
-
-        
+    try:
+        if t.is_alive():
+            stop_listening_mode()
+        app.destroy()
+    except NameError:
+        app.destroy()
+       
 def main():
     global listening_button
     global stop_button
     global app
     global service
     app = tk.Tk()
+    print(list_audio_devices())
 
     app.title("Traslate App")
     app.geometry("600x400")
     app.configure(background="#E8E0C8")
     app.protocol("WM_DELETE_WINDOW", on_closing)
+    labelFrame = tk.LabelFrame(app,text='Dipositivos',height=80,width=500)
+    labelFrame.pack(side=tk.TOP)  
+    devices_combobox = ttk.Combobox(labelFrame, width=40, value=list_audio_devices())
+    devices_combobox.grid(column=0, row=0, padx=10, pady=10, sticky='w')
     listening_icon = tk.PhotoImage(file='./assets/listening.png')
     stop_icon = tk.PhotoImage(file='./assets/stop.png')
 
+    labelFrameAction = tk.LabelFrame(app,text='Ação',height=80,width=500)
+    labelFrameAction.pack(side=tk.BOTTOM)
+
     listening_button = tk.Button(
-        app,
+        labelFrameAction,
+        width=180,
         image=listening_icon,
         text='Active listening mode',
         compound=tk.LEFT,
         command=open_listening_mode
     )
-
-    listening_button.place(
-        width=170,
-        x=230,
-        y=120
-    )
+    listening_button.grid(column=3, row=0, padx=10, pady=10, sticky='w')
 
     stop_button = tk.Button(
-        app,
+        labelFrameAction,
+        width=180,
         image=stop_icon,
         text='Stop listening',
         compound=tk.LEFT,
         command= stop_listening_mode,
         state=tk.DISABLED
     )
+    stop_button.grid(column=4, row=0, padx=10, pady=10, sticky='w')
 
-    stop_button.place(
-        width=170,
-        x=230,
-        y=180
-    )
-   
     app.mainloop()
 
 if __name__ == "__main__":
