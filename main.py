@@ -14,6 +14,7 @@ import base64
 import datetime
 from ibm_watson import SpeechToTextV1
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
+import numpy as np
 
 
 flag = False
@@ -73,21 +74,13 @@ def list_audio_devices():
     p.terminate()
     return devices
 
-def activate_listening_mode():
-    authenticator = IAMAuthenticator('mwifKfeLVtW6wWQvx2WcWLMR22WzsfHQy_kx20CayPzf')
-    service = SpeechToTextV1(authenticator=authenticator)
-    service.set_service_url('https://api.au-syd.speech-to-text.watson.cloud.ibm.com/instances/890d865a-8921-4e6d-8b01-dc4acf9eee55')
-    models = service.list_models().get_result()
-    
-    print(json.dumps(models, indent=2))
-
-    model = service.get_model('en-US_BroadbandModel').get_result()
-    print(json.dumps(model, indent=2))
+def activate_listening_mode(service):
     audio = pyaudio.PyAudio()
     stream = audio.open(rate=settings.RATE, channels=settings.CHANNELS, format=settings.FORMAT, input=True,frames_per_buffer=settings.CHUNCK)
     stream.start_stream()
     print('Escutando....')
     frames = []
+    index = 0
 
     while True:
         global flag
@@ -96,6 +89,14 @@ def activate_listening_mode():
         else:
             data = stream.read(settings.CHUNCK)
             frames.append(data)
+            array = np.array(frames)
+            memory_usage = array.itemsize * len(array)
+            
+            print(index)
+            print(memory_usage)
+            if(memory_usage > 102400):
+                print('removido')
+            index = index + 1
      
     # Disconnect the audio stream
     stream.stop_stream()
@@ -104,9 +105,10 @@ def activate_listening_mode():
     
     today_date = datetime.date.today()
     today_format = today_date.strftime("-%d-%m-%Y")
-   
+    filename = "output{}.wav".format(today_format)
+
     #Save audio to file
-    wf = wave.open("output{}.wav".format(today_format), 'wb')
+    wf = wave.open(filename, 'wb')
     wf.setnchannels(settings.CHANNELS)
     wf.setsampwidth(audio.get_sample_size(settings.FORMAT))
     wf.setframerate(settings.RATE)
@@ -126,18 +128,19 @@ def activate_listening_mode():
             print("Transcription:", transcript)
         else:
             print("No transcription available.")
+  
 
 
-
-def open_listening_mode():
+def open_listening_mode(service):
     global listening_button
     global stop_button
+    global flag
+    flag = False
     listening_button['state'] = "disabled"
     stop_button['state'] = 'active'
     global t
-    t = threading.Thread(target=activate_listening_mode)
-
-    threading.Event
+    
+    t = threading.Thread(target=activate_listening_mode, args=[service,])
     t.start()
 
 def stop_listening_mode():
@@ -170,12 +173,26 @@ def main():
     app.geometry("600x400")
     app.configure(background="#E8E0C8")
     app.protocol("WM_DELETE_WINDOW", on_closing)
+
+
+    authenticator = IAMAuthenticator('mwifKfeLVtW6wWQvx2WcWLMR22WzsfHQy_kx20CayPzf')
+    service = SpeechToTextV1(authenticator=authenticator)
+    service.set_service_url('https://api.au-syd.speech-to-text.watson.cloud.ibm.com/instances/890d865a-8921-4e6d-8b01-dc4acf9eee55')
+    models = service.list_models().get_result()
+    print(json.dumps(models, indent=2))
+
+    
+
+    model = service.get_model('en-US_BroadbandModel').get_result()
+    print(json.dumps(model, indent=2))
+
     labelFrame = tk.LabelFrame(app,text='Dipositivos',height=80,width=500)
     labelFrame.pack(side=tk.TOP)  
     devices_combobox = ttk.Combobox(labelFrame, width=40, value=list_audio_devices())
     devices_combobox.grid(column=0, row=0, padx=10, pady=10, sticky='w')
     listening_icon = tk.PhotoImage(file='./assets/listening.png')
     stop_icon = tk.PhotoImage(file='./assets/stop.png')
+
 
     labelFrameAction = tk.LabelFrame(app,text='Ação',height=80,width=500)
     labelFrameAction.pack(side=tk.BOTTOM)
@@ -186,7 +203,7 @@ def main():
         image=listening_icon,
         text='Active listening mode',
         compound=tk.LEFT,
-        command=open_listening_mode
+        command=lambda: open_listening_mode(service)
     )
     listening_button.grid(column=3, row=0, padx=10, pady=10, sticky='w')
 
