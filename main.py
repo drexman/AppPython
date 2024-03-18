@@ -11,10 +11,11 @@ from websocket._abnf import ABNF
 import threading
 import configparser
 import base64
-import datetime
+from datetime import datetime
 from ibm_watson import SpeechToTextV1
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 import numpy as np
+import uuid
 
 
 flag = False
@@ -74,12 +75,12 @@ def list_audio_devices():
     p.terminate()
     return devices
 
-def activate_listening_mode(service):
-    audio = pyaudio.PyAudio()
+def activate_listening_mode(service, audio):
     stream = audio.open(rate=settings.RATE, channels=settings.CHANNELS, format=settings.FORMAT, input=True,frames_per_buffer=settings.CHUNCK)
     stream.start_stream()
     print('Escutando....')
-    frames = []
+    global frames
+
     index = 0
 
     while True:
@@ -89,22 +90,31 @@ def activate_listening_mode(service):
         else:
             data = stream.read(settings.CHUNCK)
             frames.append(data)
-            array = np.array(frames)
-            memory_usage = array.itemsize * len(array)
-            
-            print(index)
-            print(memory_usage)
-            if(memory_usage > 102400):
-                print('removido')
-            index = index + 1
-     
+
     # Disconnect the audio stream
     stream.stop_stream()
     stream.close()
     audio.terminate()
     
-    today_date = datetime.date.today()
-    today_format = today_date.strftime("-%d-%m-%Y")
+def receive_listening(audio):
+    global frames
+    while True:
+        global flag
+        if flag:
+            break
+        else:
+            if(len(frames) > 120):
+                aux = []
+                for x in range(0, 120):
+                    popped_item = frames.pop(0)
+                    aux.append(popped_item)
+                t = threading.Thread(target=audio_translate, args=[audio,aux,])
+                t.start()
+            
+
+def audio_translate(audio, frames):
+    today_date = datetime.now()
+    today_format = today_date.strftime("-%d-%m-%Y-%H-%M-%S") + '-' +  str(uuid.uuid4())
     filename = "output{}.wav".format(today_format)
 
     #Save audio to file
@@ -114,7 +124,6 @@ def activate_listening_mode(service):
     wf.setframerate(settings.RATE)
     wf.writeframes(b''.join(frames))
     wf.close()
-    print('Audio foi gravado com sucesso')
     
     with open("output{}.wav".format(today_format), mode="rb") as wav: 
         result = service.recognize(
@@ -128,20 +137,27 @@ def activate_listening_mode(service):
             print("Transcription:", transcript)
         else:
             print("No transcription available.")
-  
-
 
 def open_listening_mode(service):
     global listening_button
     global stop_button
     global flag
     flag = False
+
+    audio = pyaudio.PyAudio()
+ 
     listening_button['state'] = "disabled"
     stop_button['state'] = 'active'
-    global t
+    global t1
+
+    global frames
+    frames = []
     
-    t = threading.Thread(target=activate_listening_mode, args=[service,])
-    t.start()
+    t1 = threading.Thread(target=activate_listening_mode, args=[service,audio])
+    t1.start()
+
+    t2 = threading.Thread(target=receive_listening, args=[audio,])
+    t2.start()
 
 def stop_listening_mode():
     global listening_button
@@ -152,10 +168,10 @@ def stop_listening_mode():
     flag=True
 
 def on_closing():
-    global t
+    global t1
     global app
     try:
-        if t.is_alive():
+        if t1.is_alive():
             stop_listening_mode()
         app.destroy()
     except NameError:
@@ -180,8 +196,6 @@ def main():
     service.set_service_url('https://api.au-syd.speech-to-text.watson.cloud.ibm.com/instances/890d865a-8921-4e6d-8b01-dc4acf9eee55')
     models = service.list_models().get_result()
     print(json.dumps(models, indent=2))
-
-    
 
     model = service.get_model('en-US_BroadbandModel').get_result()
     print(json.dumps(model, indent=2))
